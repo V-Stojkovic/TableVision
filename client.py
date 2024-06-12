@@ -3,40 +3,7 @@ import cv2
 import numpy as np
 import pickle
 import time
-
-# def start_udp_client(server_host, server_port):
-#     client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-#     cap = cv2.VideoCapture(0)
-
-#     while True:
-#         ret, frame = cap.read()
-#         if not ret:
-#             break
-
-#         # Encode the frame to JPEG
-#         _, img_encoded = cv2.imencode('.jpg', frame)
-#         data = np.array(img_encoded).tobytes()
-
-#         # Send the frame size as the first chunk
-#         client_socket.sendto(str(len(data)).encode(), (server_host, server_port))
-
-#         # Split the frame into chunks
-#         chunk_size = 1024
-#         for i in range(0, len(data), chunk_size):
-#             chunk = data[i:i+chunk_size]
-#             client_socket.sendto(chunk, (server_host, server_port))
-
-#         # Send the end marker to indicate the full frame has been transmitted
-#         client_socket.sendto(b'EOF', (server_host, server_port))
-
-#     cap.release()
-#     client_socket.close()
-
-# if __name__ == "__main__":
-#     server_host = '127.0.0.1'
-#     server_port = 12345
-#     start_udp_client(server_host, server_port)
+'''This file contains network objects for inter-process communication for the project'''
 class TCPclient:
     FORMAT = 'utf-8'
     HEADER = 64

@@ -2,13 +2,14 @@ import subprocess
 import os
 import time
 
-# Path to your virtual environment's activate script
-venv_activate_script = '/Users/vukstojkovic/documents/Project/venv/bin/activate'  # 
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Path to virtual environment's activate script
+venv_activate_script = CURRENT_DIR+'/venv/bin/activate'  
 
 # Command to run within the virtual environment
-script_command = '/opt/homebrew/bin/python3 /Users/vukstojkovic/Documents/Project/Scripts/v1/Game.py' # start server/ Game.py file 
-script_command2 = '/opt/homebrew/bin/python3 /Users/vukstojkovic/Documents/Project/Scripts/v1/GUI.py' # start GUI
-script_command3 = '/opt/homebrew/bin/python3 /Users/vukstojkovic/Documents/Project/Scripts/v1/vision.py' # Load up cameras
+script_command = f'{CURRENT_DIR}/venv/bin/pyhton3 {CURRENT_DIR}/Game.py' # start server/ Game.py file 
+script_command2 = f'{CURRENT_DIR}/venv/bin/python3 {CURRENT_DIR}/GUI.py' # start GUI
+script_command3 = f'{CURRENT_DIR}/venv/bin/python3 {CURRENT_DIR}/vision.py' # Load up cameras
 
 # Build the command to activate the virtual environment and run the script
 activate_cmd = f'source {venv_activate_script} && {script_command}'

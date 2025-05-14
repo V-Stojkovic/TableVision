@@ -1,33 +1,39 @@
-import cv2
-import mediapipe as mp # type: ignore
-import numpy as np 
-import playsound
-
+'''
+File: vision.py
+Author: V. Stojkovic
+Date: 2024-11-5
+Description:
+    This file contains the main code for the vision module.'''
+# Standard library imports
+import queue
+import threading
 import warnings
+
+# Third-party imports
+import cv2
+import mediapipe as mp  # type: ignore
+import numpy as np
+from tensorflow import keras
+from tensorflow.keras.layers import Dense, Dropout, LSTM  # type: ignore
+from tensorflow.keras.models import Sequential  # type: ignore
+from tensorflow.keras.optimizers.legacy import Adam  # type: ignore
+
+# Local application imports
 import client
 import server
-from tensorflow import keras
-from tensorflow.keras.models import Sequential #type: ignore
-from tensorflow.keras.layers import LSTM, Dense, Dropout #type: ignore
-from tensorflow.keras.optimizers.legacy import Adam # type:ignore
-import threading
-import queue
-import logging
+from vision_utils import draw_landmarks, extract_keypoints, motion_analysis, mp_detection
 
 
 
 
 warnings.filterwarnings('ignore')
-mp_holistic = mp.solutions.holistic
-mp_drawing = mp.solutions.drawing_utils
+
 HEIGHT = 800
 WIDTH = 600
 
-cam1 = cv2.VideoCapture(0)
-cam2 = cv2.VideoCapture(1)
-
 actions = np.array(['3-points-scored','2-point','1-Point','Stop_for_foul','Stop_for_violation','Start_clock','point-left','point-right'])
-def load_model(path_to_weights:str) -> Sequential():
+
+def load_model(path_to_weights:str) -> Sequential:
     '''
     Creates the layers of the model and loads the weights from training
     
@@ -48,73 +54,26 @@ def load_model(path_to_weights:str) -> Sequential():
     model.load_weights(path_to_weights)
     return model
 
-def mp_detection(image:np.ndarray,model):
-    '''takes an image and trained model and extracts features, returns results followed by image'''
-    image = cv2.cvtColor(
-        image, cv2.COLOR_BGR2RGB
-        )
-    image.flags.writeable = False
-    results = model.process(image)
-    image.flags.writeable = True
-    image = cv2.cvtColor(
-        image, cv2.COLOR_RGB2BGR
-        )
-    return results, image
 
-def draw_landmarks(image,results):
-    '''
-    Plot landmarks on the frame, takes image and results form mp_detection
-    
-    Parameters:
-    - Image(numpy.ndarray): Numpy array containing the image
-    - results()'''
-    mp_drawing.draw_landmarks(
-        image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS,
-        mp_drawing.DrawingSpec(color=(26, 204, 16), thickness = 2, circle_radius =4),
-        mp_drawing.DrawingSpec(color=(255,255,255), thickness=2, circle_radius=2)
-    )
-    mp_drawing.draw_landmarks(
-        image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS,
-        mp_drawing.DrawingSpec(color=(26, 204, 16), thickness=2, circle_radius=4), 
-        mp_drawing.DrawingSpec(color=(255,255,255), thickness=2, circle_radius=2)
-    )
-    mp_drawing.draw_landmarks(
-        image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS,
-        mp_drawing.DrawingSpec(color=(80,22,10), thickness=2, circle_radius=4), 
-        mp_drawing.DrawingSpec(color=(255,255,255), thickness=2, circle_radius=2)
-    )
-def extract_keypoints(results):
-    pose = np.array([[res.x, res.y, res.z, res.visibility] for res in results.pose_landmarks.landmark]).flatten() if results.pose_landmarks else np.zeros(33*4)
-    # face = np.array([[res.x, res.y, res.z] for res in results.face_landmarks.landmark]).flatten() if results.face_landmarks else np.zeros(468*3)
-    lh = np.array([[res.x, res.y, res.z] for res in results.left_hand_landmarks.landmark]).flatten() if results.left_hand_landmarks else np.zeros(21*3)
-    rh = np.array([[res.x, res.y, res.z] for res in results.right_hand_landmarks.landmark]).flatten() if results.right_hand_landmarks else np.zeros(21*3)
-    return np.concatenate([pose, lh, rh])
-def motion_analysis(frame1:np.ndarray,frame2:np.ndarray,draw=False):
-    gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
-    gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
 
-    # Calculate the absolute difference between the current and previous frame
-    diff = cv2.absdiff(gray1, gray2)
+# Initialize the cameras
+try:
+    cam1 = cv2.VideoCapture(0)
+    cam2 = cv2.VideoCapture(1)
+except Exception as e:
+    print(f"Error initializing cameras: {e}")
+    cam1 = None
+    cam2 = None
+if cam1 is None or cam2 is None:
+    print("Error: One or both cameras could not be initialized.")
+    exit(1)
+# Set the resolution of the cameras
+cam1.set(cv2.CAP_PROP_FRAME_WIDTH, WIDTH)
+cam1.set(cv2.CAP_PROP_FRAME_HEIGHT, HEIGHT)
+cam2.set(cv2.CAP_PROP_FRAME_WIDTH, WIDTH)
+cam2.set(cv2.CAP_PROP_FRAME_HEIGHT, HEIGHT)
+# Set the frame rate of the cameras 
 
-    # Apply a threshold to highlight the regions with significant differences
-    _, threshold = cv2.threshold(diff, 30, 255, cv2.THRESH_BINARY)
-
-    # Find contours of the thresholded image
-    contours, _ = cv2.findContours(threshold, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    # Calculate the total area of motion
-    total_motion_area = sum(cv2.contourArea(contour) for contour in contours if cv2.contourArea(contour) > 100)
-
-    # Normalize the motion intensity between 0 and 1
-    normalized_motion = min(total_motion_area / (frame2.shape[0] * frame2.shape[1]), 1.0)
-    new_frame = frame2
-    if draw:
-        for contour in contours:
-            if cv2.contourArea(contour) > 5000:  # Adjust the area threshold as needed
-                (x, y, w, h) = cv2.boundingRect(contour)
-                cv2.rectangle(new_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
-    return normalized_motion, new_frame
 transmit = False
 sequence1 = []
 sequence2 = []
@@ -151,7 +110,7 @@ while True:
         ret2,frame_b1 = cam2.read()
 
         if transmit and ret1 and ret2 :
-            print('VISION: TRYING TO SEND FRAMES')
+            #attempt to send frames to game.py
             send_frame_a1 = cv2.rotate(frame_a1,cv2.ROTATE_90_COUNTERCLOCKWISE)
             send_frame_b1 = cv2.rotate(frame_b1,cv2.ROTATE_90_COUNTERCLOCKWISE)
             UDP_agent.send_frame(send_frame_a1)
